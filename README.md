@@ -1,9 +1,9 @@
 # DrosEU-metagenomics
-The bioinformatics pipeline for the metagenomics analyses of the DrosEU data from 2014-2016.
+The bioinformatics pipeline for the metagenomics analyses of the DrosEU (https://droseu.net/) data from 2014-2016.
+2014 raw sequences data are available at https://www.ncbi.nlm.nih.gov/search/all/?term=PRJNA388788
 
 
-
-## A) trim, map and re-align around InDels
+## A) trim, map 
 
 ### 1) Trim raw FASTQ reads for BQ >18 and minimum length > 75bp with [cutadapt](https://cutadapt.readthedocs.io/en/stable/)
 
