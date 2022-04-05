@@ -92,15 +92,17 @@ n=${#listA[@]}
 for i in $(seq $n);do echo -e '#!/bin/bash\n#SBATCH --nodes=1\n#SBATCH --cpus-per-task=4\n#SBATCH --time=00:39:59\n#SBATCH --output=cut_'${listA[$i]}'.txt\ncd /pfs/work7/workspace/scratch/fr_yw50-restore_DrosEU-0/2014/qtrim_reads/\n/pfs/work7/workspace/scratch/fr_yw50-restore_DrosEU-0/bbmap/bbduk.sh -Xmx1g in1='${listA[$i]}' in2='${listB[$i]}' outu1='${listA[$i]}'_cleanr.fq.gz outu2='${listB[$i]}'_cleanr.fq.gz ref=DrosEU_adapters2014.fa ktrim=r k=23 mink=11 hdist=1 overwrite=t tbo=t tpe=t minlength=75\n/pfs/work7/workspace/scratch/fr_yw50-restore_DrosEU-0/bbmap/bbduk.sh -Xmx1g in1='${listA[$i]}'_cleanr.fq.gz in2='${listB[$i]}'_cleanr.fq.gz outu1='${listA[$i]}'_cleanrl.fq.gz outu2='${listB[$i]}'_cleanrl.fq.gz ref=DrosEU_adapters.fa ktrim=r k=23 mink=11 hdist=1 overwrite=t tbo=t tpe=t minlength=75' > ${listA[$i]}_bbduk.sh1 ;done
 ```
 
-And then I could submit all .sh files in the cluster simultaneously.
+And then I could submit all .sh files in the cluster(Slurm) simultaneously.
 
 ```bash
 for f in *sh1; do sbatch -p single $f;done 
 ```
 
 ### 4) mapping on fly genome
+
 Mapping on D.melanogaster and D.simulans genome (flies.fna.gz). We only need unmapped reads (microbe reads) as output.
 The basic command looks like this:
+
 ```bash
 cd to/folder/after/trimming
 listA=(*_R1.*fq.gz)
@@ -123,16 +125,95 @@ date\ncd /pfs/work7/workspace/scratch/fr_yw50-restore_DrosEU-0/2014/qtrim_reads
 
 for f in 1*sh2; do sbatch -p single $f;done 
 ```
+## B) short reads analysis with Diamond and Megan
 
-### 4) mapping on assembly
+### 1) reads annotation with Diamond blastx
+The input files are reads that are not mapped on fly genome.
+
+The basic command looks like this:
+```bash
+#build nr.dmnd from ncbi database, this only needs to be done once
+diamond makedb --in nr.gz --db nr
+
+diamond blastx --query 'xx.unmapped.fq.gz' --db nr.dmnd --daa xx.unmapped.fq.gz.daa
+```
+
+In cluster I again generate .sh file for each fastq file and submit them simultaneously.
+
+```bash
+unset listA
+listA=(*unmapped.fq.gz)
+n=${#listA[@]}
+for i in $(seq $n); do echo -e '#!/bin/bash\n#SBATCH --nodes=1\n#SBATCH --cpus-per-task=16\n#SBATCH --time=5:19:59\n#SBATCH --output=diamond_'${listA[$i]}'.txt\ncd /pfs/work7/workspace/scratch/fr_yw50-restore_DrosEU-0/2014\ndate
+/home/fr/fr_fr/fr_yw50/diamond/diamond blastx --query '${listA[$i]}' --db /home/fr/fr_fr/fr_yw50/diamond/nr.dmnd --daa daa/'${listA[$i]}'.daa\ndate' > ${listA[$i]}_daa.sh4 ;done
+for f in sh4; do sbatch -p single $f;done  
+```
+
+### 2) convert daa files to rma6 files
+The input files are R1-R2 pairs of daa files.
+The basic command looks like this:
+```bash
+daa2rma -p true -ps 1 -i daa/1_R1.unmapped.fq.gz.daa daa/1_R2.unmapped.fq.gz.daa -o rma/ -a2t /diamond/prot_acc2tax-Jul2019X1.abin -a2eggnog /acc2eggnog-Jul2019X.abin
+```
+In cluster I again generate .sh file for each fastq file and submit them simultaneously.
+
+```bash
+unset listA
+unset listB
+listA=(*_R1.*.daa)
+listB=(*_R2.*.daa)
+n=${#listA[@]}
+for i in $(seq $n); do echo -e '#!/bin/bash\n#SBATCH --nodes=1\n#SBATCH --cpus-per-task=16\n#SBATCH --time=10:19:59\n#SBATCH --output=megan_'${listA[$i]}'.txt\ncd /pfs/work7/workspace/scratch/fr_yw50-restore_DrosEU-0/2014/daa\ndate
+/home/fr/fr_fr/fr_yw50/diamond/megan/tools/daa2rma -p true -ps 1 -i '${listA[$i]}' '${listB[$i]}' -o /pfs/work7/workspace/scratch/fr_yw50-restore_DrosEU-0/2014/rma/ -a2t /home/fr/fr_fr/fr_yw50/diamond/prot_acc2tax-Jul2019X1.abin -a2eggnog /home/fr/fr_fr/fr_yw50/diamond/acc2eggnog-Jul2019X.abin -a2interpro2go /home/fr/fr_fr/fr_yw50/diamond/acc2interpro-Jul2019X.abin -a2seed /home/fr/fr_fr/fr_yw50/diamond/acc2seed-May2015XX.abin\ndate' > ${listA[$i]}_rma.sh6 ;done
+```
+The ouput rma6 files can be analyzed in MEGAN6.
+
+## C) Binning approach with Maxbin2, Metabat2, Concoct, Das tool 
+
+### 4) mapping on assembly with bowtie2
 Mapping the unmapped (microbe) reads on the assembly, the assembly file final.contigs.fa was generated from Megahit.
 
 The basic command looks like this:
 ```bash
+#build library for the assembly, this only needs to be done once
 bowtie2-build ./final.contigs.fa mapping/contig
 
 bowtie2 --threads 8 -x mapping/contig -1 R1_clean_unmapped.fq -2 R2_clean_unmapped.fq -S Sample.sam
 ```
+
+In cluster I again generate .sh file for each pair of fastq files.
+
+```bash
+unset listA
+unset listB
+listA=(*R1*.gz_unmapped.fq)
+listB=(*R2*.gz_unmapped.fq)
+n=${#listA[@]}
+for i in $(seq $n); do bowtie2 --threads 16 -x mapping/contig -1 ${listA[$i]} -2 ${listB[$i]} -S Sample_${listA[$i]:0:2}.sam; done  >  ${listA[$i]}.sh3; done
+
+for f in 1*sh2; do sbatch -p single $f;done 
+```
+
+### 5)convert sam to bam, sort and index bam
+
+```bash
+for x in *.sam;
+do samtools view -F 4 -bS $x > $x-RAW.bam;
+done
+
+#sort
+for x in *RAW.bam;
+do samtools sort $x > $x-sort.bam;
+done
+
+#index
+for x in *RAW.bam;
+do samtools sort $x > $x-sort.bam;
+done
+
+
+
+
 
 ### 1) Trim raw FASTQ reads for BQ >18 and minimum length > 75bp with [cutadapt](https://cutadapt.readthedocs.io/en/stable/)
 
