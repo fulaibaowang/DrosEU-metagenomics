@@ -2,7 +2,6 @@
 The bioinformatics pipeline for the metagenomics analyses of the DrosEU (https://droseu.net/) data from 2014-2016.
 2014 raw sequences data are available at https://www.ncbi.nlm.nih.gov/search/all/?term=PRJNA388788
 
-
 ## A) QC, trim, map 
 
 ### 1) run FASTQC to find the overrepresented sequences (adapters)
@@ -134,9 +133,6 @@ bowtie2-build ./final.contigs.fa mapping/contig
 
 bowtie2 --threads 8 -x mapping/contig -1 R1_clean_unmapped.fq -2 R2_clean_unmapped.fq -S Sample.sam
 ```
-
-
-
 
 ### 1) Trim raw FASTQ reads for BQ >18 and minimum length > 75bp with [cutadapt](https://cutadapt.readthedocs.io/en/stable/)
 
