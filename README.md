@@ -75,14 +75,14 @@ write.csv(unique(df),"DrosEU_adapters.fa.csv")
 
 ### 3) trim with BBduk (remove adapters, minimum length > 75bp, BQ > 18
 
-the basic command looks like this
+The basic command looks like this:
 
 ```bash
 bbduk.sh -Xmx1g in1=xx_R1.fastq.gz_q18.fq.gz in2=xx_R2.fastq.gz_q18.fq.gz out1=xx_R1.fastq.gz.out out2=10_R2.fastq.gz.out ref=DrosEU_adapters.fa ktrim=r k=23 mink=11 hdist=1 overwrite=t tbo=t tpe=t minlength=75 qtrim=rl trimq=18
 
 ```
 
-I generate a .sh file for each pair of fastq files
+I generate a .sh file for each pair of fastq files.
 ```bash
 unset listA
 unset listB
@@ -92,15 +92,15 @@ n=${#listA[@]}
 for i in $(seq $n);do echo -e '#!/bin/bash\n#SBATCH --nodes=1\n#SBATCH --cpus-per-task=4\n#SBATCH --time=00:39:59\n#SBATCH --output=cut_'${listA[$i]}'.txt\ncd /pfs/work7/workspace/scratch/fr_yw50-restore_DrosEU-0/2014/qtrim_reads/\n/pfs/work7/workspace/scratch/fr_yw50-restore_DrosEU-0/bbmap/bbduk.sh -Xmx1g in1='${listA[$i]}' in2='${listB[$i]}' outu1='${listA[$i]}'_cleanr.fq.gz outu2='${listB[$i]}'_cleanr.fq.gz ref=DrosEU_adapters2014.fa ktrim=r k=23 mink=11 hdist=1 overwrite=t tbo=t tpe=t minlength=75\n/pfs/work7/workspace/scratch/fr_yw50-restore_DrosEU-0/bbmap/bbduk.sh -Xmx1g in1='${listA[$i]}'_cleanr.fq.gz in2='${listB[$i]}'_cleanr.fq.gz outu1='${listA[$i]}'_cleanrl.fq.gz outu2='${listB[$i]}'_cleanrl.fq.gz ref=DrosEU_adapters.fa ktrim=r k=23 mink=11 hdist=1 overwrite=t tbo=t tpe=t minlength=75' > ${listA[$i]}_bbduk.sh1 ;done
 ```
 
-And then I could submit all .sh files in the cluster simultaneously
+And then I could submit all .sh files in the cluster simultaneously.
+
 ```bash
 for f in *sh1; do sbatch -p single $f;done 
 ```
 
 ### 4) mapping on fly genome
 Mapping on D.melanogaster and D.simulans genome (flies.fna.gz). We only need unmapped reads (microbe reads) as output.
-the basic command looks like this:
-
+The basic command looks like this:
 ```bash
 cd to/folder/after/trimming
 listA=(*_R1.*fq.gz)
@@ -108,7 +108,7 @@ listB=(*_R2.*fq.gz)
 bbmap.sh -Xmx30g ref=flies.fna.gz in1='${listA[$i]}' in2='${listB[$i]}' outu1='${listA[$i]}'_unmapped.fq.gz outu2='${listB[$i]}'_unmapped.fq.gz
 ```
 
-In cluster I again generate .sh file for each pair of fastq files
+In cluster I again generate .sh file for each pair of fastq files.
 
 ```bash
 unset listA
@@ -127,7 +127,7 @@ for f in 1*sh2; do sbatch -p single $f;done
 ### 4) mapping on assembly
 Mapping the unmapped (microbe) reads on the assembly, the assembly file final.contigs.fa was generated from Megahit.
 
-the basic command looks like this:
+The basic command looks like this:
 ```bash
 bowtie2-build ./final.contigs.fa mapping/contig
 
