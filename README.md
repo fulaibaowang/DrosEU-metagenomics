@@ -3,7 +3,140 @@ The bioinformatics pipeline for the metagenomics analyses of the DrosEU (https:/
 2014 raw sequences data are available at https://www.ncbi.nlm.nih.gov/search/all/?term=PRJNA388788
 
 
-## A) trim, map 
+## A) QC, trim, map 
+
+### 1) run FASTQC to find the overrepresented sequences (adapters)
+
+```bash
+fastqc -t 12  *.gz
+```
+
+
+### 2) use R to merge all overrepresented sequences into a single file
+
+```R
+#https://www.biostars.org/p/321827/
+#https://www.biostars.org/p/366687/
+#install.packages('fastqcr')
+library(fastqcr)
+
+# Aggregating Multiple FastQC Reports into a Data Frame 
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+# Demo QC directory containing zipped FASTQC reports
+# copy folder under fastqcr pacakage folder
+qc.dir <- system.file("droseu_output/2014", package = "fastqcr")
+list.files(qc.dir)
+qc <- qc_aggregate(qc.dir)
+qc
+
+false_overseq=qc[qc$module=='Overrepresented sequences'&qc$status!='PASS',]$sample
+# "Dme7_DSFP0597-w_HVNKCCCXX_L7_2.fq"
+# "Dme7_DSFP0597-w_HVNKCCCXX_L7_2_fastqc.zip"
+# "Dme7_DSFP0597-w_HVNKCCCXX_L7_2.fastqc.zip"
+# paste(substr(false_overseq,1,nchar(false_overseq)-3),"_fastqc.zip",sep='')
+
+#library("magrittr")
+false_overseq2=c()
+for (i in false_overseq) {
+  #print(i)}
+  isubstr=substr(i,nchar(i)-5,nchar(i))
+  if (isubstr=='.fq.gz') {
+    i=paste(substr(i,1,nchar(i)-6),"_fastqc.zip",sep='')
+  }
+  else {i=paste(i,"_fastqc.zip",sep='')}
+  false_overseq2=append(false_overseq2,i)
+}
+false_overseq2
+
+Sequence=c()
+Source=c()
+percentage=c()
+
+for (i in false_overseq2) {
+  qc.file <- system.file("droseu_output/2014", i,  package = "fastqcr")
+  #print(qc.file)
+  a=fastqcr::qc_read(qc.file)$overrepresented_sequences$Sequence
+  b=fastqcr::qc_read(qc.file)$overrepresented_sequences$`Possible Source`
+  c=fastqcr::qc_read(qc.file)$overrepresented_sequences$Percentage
+  Sequence=append(Sequence,a)
+  Source=append(Source,b)
+  percentage=append(percentage,c)
+      }
+#fastqcr::qc_read(qc.file)$overrepresented_sequences %>%
+#  dplyr::mutate(name=paste(">",1:n(),"-",Count,sep=""),fa=paste(name,Sequence,sep="\n")) %>%
+#  dplyr::pull(fa) %>% 
+#  readr::write_lines("overrepresented.fa")
+
+
+df= cbind(Sequence,Source)
+df
+unique(df)
+write.csv(unique(df),"DrosEU_adapters.fa.csv")
+```
+
+### 3) trim with BBduk (remove adapters, minimum length > 75bp, BQ > 18
+
+the basic command looks like this
+
+```bash
+bbduk.sh -Xmx1g in1=xx_R1.fastq.gz_q18.fq.gz in2=xx_R2.fastq.gz_q18.fq.gz out1=xx_R1.fastq.gz.out out2=10_R2.fastq.gz.out ref=DrosEU_adapters.fa ktrim=r k=23 mink=11 hdist=1 overwrite=t tbo=t tpe=t minlength=75 qtrim=rl trimq=18
+
+```
+
+I generate a .sh file for each pair of fastq files
+```bash
+unset listA
+unset listB
+listA=(*_R1.*fq.gz)
+listB=(*_R2.*fq.gz)
+n=${#listA[@]}
+for i in $(seq $n);do echo -e '#!/bin/bash\n#SBATCH --nodes=1\n#SBATCH --cpus-per-task=4\n#SBATCH --time=00:39:59\n#SBATCH --output=cut_'${listA[$i]}'.txt\ncd /pfs/work7/workspace/scratch/fr_yw50-restore_DrosEU-0/2014/qtrim_reads/\n/pfs/work7/workspace/scratch/fr_yw50-restore_DrosEU-0/bbmap/bbduk.sh -Xmx1g in1='${listA[$i]}' in2='${listB[$i]}' outu1='${listA[$i]}'_cleanr.fq.gz outu2='${listB[$i]}'_cleanr.fq.gz ref=DrosEU_adapters2014.fa ktrim=r k=23 mink=11 hdist=1 overwrite=t tbo=t tpe=t minlength=75\n/pfs/work7/workspace/scratch/fr_yw50-restore_DrosEU-0/bbmap/bbduk.sh -Xmx1g in1='${listA[$i]}'_cleanr.fq.gz in2='${listB[$i]}'_cleanr.fq.gz outu1='${listA[$i]}'_cleanrl.fq.gz outu2='${listB[$i]}'_cleanrl.fq.gz ref=DrosEU_adapters.fa ktrim=r k=23 mink=11 hdist=1 overwrite=t tbo=t tpe=t minlength=75' > ${listA[$i]}_bbduk.sh1 ;done
+```
+
+And then I could submit all .sh files in the cluster simultaneously
+```bash
+for f in *sh1; do sbatch -p single $f;done 
+```
+
+### 4) mapping on fly genome
+Mapping on D.melanogaster and D.simulans genome (flies.fna.gz). We only need unmapped reads (microbe reads) as output.
+the basic command looks like this:
+
+```bash
+cd to/folder/after/trimming
+listA=(*_R1.*fq.gz)
+listB=(*_R2.*fq.gz)
+bbmap.sh -Xmx30g ref=flies.fna.gz in1='${listA[$i]}' in2='${listB[$i]}' outu1='${listA[$i]}'_unmapped.fq.gz outu2='${listB[$i]}'_unmapped.fq.gz
+```
+
+In cluster I again generate .sh file for each pair of fastq files
+
+```bash
+unset listA
+unset listB
+listA=(*_R1.*cl*.fq.gz)
+listB=(*_R2.*cl*.fq.gz)
+echo ${#listA[*]} 
+n=${#listA[@]}
+for i in $(seq $n);do echo -e '#!/bin/bash\n#SBATCH --nodes=1\n#SBATCH --cpus-per-task=16\n#SBATCH --time=7:59:59\n#SBATCH --output=bbmap_run_'${listA[$i]}'.txt
+date\ncd /pfs/work7/workspace/scratch/fr_yw50-restore_DrosEU-0/2014/qtrim_reads
+/pfs/work7/workspace/scratch/fr_yw50-restore_DrosEU-0/bbmap/bbmap.sh -Xmx30g ref=flies.fna.gz in1='${listA[$i]}' in2='${listB[$i]}' outu1='${listA[$i]}'_unmapped.fq.gz outu2='${listB[$i]}'_unmapped.fq.gz\ndate' > ${listA[$i]}.sh2 ;done
+
+for f in 1*sh2; do sbatch -p single $f;done 
+```
+
+### 4) mapping on assembly
+Mapping the unmapped (microbe) reads on the assembly, the assembly file final.contigs.fa was generated from Megahit.
+
+the basic command looks like this:
+```bash
+bowtie2-build ./final.contigs.fa mapping/contig
+
+bowtie2 --threads 8 -x mapping/contig -1 R1_clean_unmapped.fq -2 R2_clean_unmapped.fq -S Sample.sam
+```
+
+
+
 
 ### 1) Trim raw FASTQ reads for BQ >18 and minimum length > 75bp with [cutadapt](https://cutadapt.readthedocs.io/en/stable/)
 
