@@ -194,7 +194,7 @@ for i in $(seq $n); do bowtie2 --threads 16 -x mapping/contig -1 ${listA[$i]} -2
 for f in 1*sh2; do sbatch -p single $f;done 
 ```
 
-### 5)convert sam to bam, sort and index bam
+### 2)convert sam to bam, sort and index bam
 
 ```bash
 for x in *.sam;
