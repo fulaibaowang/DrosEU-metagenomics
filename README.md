@@ -208,7 +208,7 @@ done
 
 #index
 for x in *RAW.bam;
-do samtools sort $x > $x-sort.bam;
+do samtools index $x-sort.bam;
 done
 
 #calculate coverage
